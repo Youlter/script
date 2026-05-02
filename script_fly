@@ -33,14 +33,27 @@ local function SecureLoad(url)
     return success and content or nil
 end
 
--- 1.3: Инициализация Rayfield
-local libSource = SecureLoad("https://raw.githubusercontent.com/SiriusScan/Rayfield/main/source.lua")
-if not libSource then 
-    return error("CRITICAL: Не удалось загрузить ядро. Проверьте VPN!") 
+-- 1.3: Инициализация Rayfield (ОБНОВЛЕННАЯ ССЫЛКА)
+local libSource = SecureLoad("https://sirius.menu/rayfield")
+
+if not libSource or #libSource < 100 then
+    -- Если основной сайт лежит, используем проверенное зеркало
+    libSource = SecureLoad("https://raw.githubusercontent.com/shlexware/Rayfield/main/source.lua")
 end
 
-local Rayfield = loadstring(libSource)()
-
+if libSource then
+    local success, result = pcall(function()
+        return loadstring(libSource)()
+    end)
+    
+    if success then
+        Rayfield = result
+    else
+        warn("Ошибка компиляции: " .. tostring(result))
+    end
+else
+    return error("КРИТИЧЕСКАЯ ОШИБКА: Библиотека Rayfield недоступна по всем ссылкам!")
+end
 -- 1.4: Создание окна
 local Window = Rayfield:CreateWindow({
     Name = "✨ Premium Suite | PART 1-15",
