@@ -108,7 +108,7 @@ PlayerTab:CreateSection("Movement & Kill Systems")
 
 -- Улучшенный Полет (Метод Youlter с GitHub)
 PlayerTab:CreateToggle({
-    Name = "Flight (Ultra Mode)",
+    Name = "Fly",
     CurrentValue = false,
     Callback = function(v)
         getgenv().SuiteConfig.Player.FlyEnabled = v
