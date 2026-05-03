@@ -1,4 +1,4 @@
--- [[ PREMIUM SUITE V4 | POWERED BY INFINITE YIELD LOGIC ]]
+-- [[ fucking script helper by Youlter ]]
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- // Сервисы и Переменные
@@ -27,14 +27,13 @@ getgenv().SuiteConfig = {
     }
 }
 
--- // [SECTION] Создание Интерфейса
 local Window = Rayfield:CreateWindow({
-    Name = "Premium Suite V4 | IY Edition",
-    LoadingTitle = "Injecting Infinite Yield Logic...",
-    LoadingSubtitle = "by Gemini",
+    Name = "fucking script helper v2", 
+    LoadingTitle = "Injecting Logic...",
+    LoadingSubtitle = "by Youlter", 
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "PremiumSuite_V4",
+        FolderName = "Youlter_Suite", 
         FileName = "MainConfig"
     }
 })
