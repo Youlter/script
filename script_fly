@@ -1274,72 +1274,64 @@ getgenv().SuiteConfig.MM2 = {
 
 -- // Создание вкладки
 local GameTab = Window:CreateTab("MM2 / FPS")
-
 -- // [SECTION] MM2 Visuals
 GameTab:CreateSection("Murder Mystery 2")
 
+-- Переключатель для твоего внешнего скрипта
 GameTab:CreateToggle({
-    Name = "Role ESP (Murd/Sheriff)",
+    Name = "Advanced Highlight ESP (External)",
     CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.MM2.Visuals = v end
+    Callback = function(v)
+        getgenv().SuiteConfig.MM2.ExternalESP = v
+        
+        if v then
+            -- Загрузка внешнего скрипта ("Watermelon")
+            local success, err = pcall(function()
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Ihaveash0rtnamefordiscord/Releases/main/MurderMystery2HighlightESP"))(' Watermelon ?')
+            end)
+            if success then
+                Rayfield:Notify({Title = "MM2 ESP", Content = "External Highlights Loaded!", Duration = 3})
+            else
+                warn("Ошибка загрузки ESP: " .. err)
+            end
+        else
+            -- ЛОГИКА ОТКЛЮЧЕНИЯ: Удаляем Highlight объекты
+            for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+                if player.Character then
+                    for _, obj in pairs(player.Character:GetDescendants()) do
+                        if obj:IsA("Highlight") then
+                            obj:Destroy()
+                        end
+                    end
+                end
+            end
+            Rayfield:Notify({Title = "MM2 ESP", Content = "External ESP Cleaned.", Duration = 3})
+        end
+    end
 })
 
+-- // [LOGIC] Auto-Grab Gun (Оставляем как на скрине, это полезно)
 GameTab:CreateToggle({
-    Name = "Auto-Grab Gun (Телепорт пистолета)",
+    Name = "Auto-Grab Gun (Teleport)",
     CurrentValue = false,
     Callback = function(v) getgenv().SuiteConfig.MM2.AutoGrab = v end
 })
 
--- // [LOGIC] MM2 Role Detection & ESP
--- Сканирует игроков на наличие специфических предметов
-RunService.RenderStepped:Connect(function()
-    if getgenv().SuiteConfig.MM2.Visuals then
-        for _, p in pairs(Players:GetPlayers()) do
-            if p ~= LP and p.Character then
-                -- Проверка на Убийцу (Нож)
-                local Knife = p.Character:FindFirstChild("Knife") or p.Backpack:FindFirstChild("Knife")
-                -- Проверка на Шерифа (Пистолет)
-                local Gun = p.Character:FindFirstChild("Gun") or p.Backpack:FindFirstChild("Gun")
-                
-                local Highlight = p.Character:FindFirstChild("RoleHighlight")
-                if not Highlight then
-                    Highlight = Instance.new("Highlight")
-                    Highlight.Name = "RoleHighlight"
-                    Highlight.Parent = p.Character
-                end
-
-                if Knife then
-                    Highlight.Enabled = true
-                    Highlight.FillColor = getgenv().SuiteConfig.MM2.MurdererColor
-                elseif Gun then
-                    Highlight.Enabled = true
-                    Highlight.FillColor = getgenv().SuiteConfig.MM2.SheriffColor
-                else
-                    Highlight.Enabled = false
-                end
-            end
-        end
-    end
-end)
-
--- // [LOGIC] Auto-Grab Gun (IY Logic)
--- Если пистолет выпадает (становится частью Workspace), скрипт его забирает
 task.spawn(function()
     while task.wait(0.1) do
         if getgenv().SuiteConfig.MM2.AutoGrab then
-            local DroppedGun = workspace:FindFirstChild("GunDrop") -- Стандартное имя в MM2
-            if DroppedGun and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                local OldPos = LP.Character.HumanoidRootPart.CFrame
-                -- Мгновенный телепорт к пистолету и обратно
-                LP.Character.HumanoidRootPart.CFrame = DroppedGun.CFrame
+            local DroppedGun = workspace:FindFirstChild("GunDrop")
+            if DroppedGun and game.Players.LocalPlayer.Character and game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local OldPos = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = DroppedGun.CFrame
                 task.wait(0.2)
-                LP.Character.HumanoidRootPart.CFrame = OldPos
+                game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = OldPos
                 Rayfield:Notify({Title = "MM2", Content = "Gun Picked Up!", Duration = 3})
             end
         end
     end
 end)
-
+ 
 -- // [SECTION] General FPS
 GameTab:CreateSection("General FPS Boost")
 
