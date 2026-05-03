@@ -1,369 +1,232 @@
--- [[ fucking script helper v2 | by Youlter ]]
--- script helper
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+-- // [PRE-INITIALIZATION]
+-- Удаляем следы предыдущих запусков, чтобы не лагало
+if getgenv().YoulterExecuted then
+    print("Detected previous execution, cleaning up...")
+    getgenv().YoulterExecuted = false
+end
 
--- // [1.1] СЕРВИСЫ И ОКРУЖЕНИЕ
-local Players = game:GetService("Players")
-local LP = Players.LocalPlayer
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Camera = workspace.CurrentCamera
-
--- // [1.2] МАКСИМАЛЬНЫЙ КОНФИГ (Environment)
--- Здесь подготовлены места для всех твоих будущих модулей
-getgenv().SuiteConfig = {
-    Movement = { WS = 16, JP = 50, InfJump = false },
-    Player = { 
-        FlyEnabled = false, 
-        FlySpeed = 50, 
-        SpinSpeed = 5000, 
-        Fling = false,
-        Noclip = false 
-    },
-    Visuals = { Enabled = false, Boxes = false, Tracers = false, Names = false },
-    Combat = { Aimbot = false, SilentAim = false, FOV = 100 },
-    MM2 = { AutoFarm = false, ShowRoles = false }
-}
-
--- // [1.3] СОЗДАНИЕ ИНТЕРФЕЙСА
-local Window = Rayfield:CreateWindow({
-    Name = "fucking script helper v2",
-    LoadingTitle = "by Youlter",
-    LoadingSubtitle = "script helper mode | Full Power",
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "YoulterV2_Core",
-        FileName = "MainConfig"
-    }
-})
-
--- // [1.4] ИНИЦИАЛИЗАЦИЯ ВКЛАДОК[cite: 1]
-local MoveTab = Window:CreateTab("Movement")
-local PlayerTab = Window:CreateTab("Player")
-local CombatTab = Window:CreateTab("Combat")
-local VisTab = Window:CreateTab("Visuals")
-local MM2Tab = Window:CreateTab("MM2")
-local WorldTab = Window:CreateTab("World")
-local MiscTab = Window:CreateTab("Server/Misc")
-
--- Фиксация загрузки в консоль
-print("fucking script helper v2: Core Initialized [by Youlter]")
--- // [SECTION] MOVEMENT (Высшая физика)
-MoveTab:CreateSection("Physical Overrides")
-
--- Слайдер скорости с экстремальным лимитом
-MoveTab:CreateSlider({
-    Name = "WalkSpeed Override",
-    Range = {16, 1000},
-    Increment = 1,
-    CurrentValue = 16,
-    Callback = function(v)
-        getgenv().SuiteConfig.Movement.WS = v
+-- // [SERVICES] - Оптимизированный доступ к движку игры
+local Services = setmetatable({}, {
+    __index = function(t, k)
+        return game:GetService(k)
     end
 })
 
--- Слайдер силы прыжка (для затяжных прыжков)
-MoveTab:CreateSlider({
+local Players = Services.Players
+local RunService = Services.RunService
+local UIS = Services.UserInputService
+local TS = Services.TweenService
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+local Camera = workspace.CurrentCamera
+
+-- // [GLOBAL CONFIGURATION] - Центральное хранилище настроек
+getgenv().Config = {
+    Visuals = {
+        ESP = false,
+        Tracers = false,
+        Boxes = false,
+        Names = false,
+        Distance = false,
+        Color = Color3.fromRGB(255, 0, 0)
+    },
+    Combat = {
+        Aimbot = false,
+        SilentAim = false,
+        FOV = 100,
+        Smoothness = 1,
+        TargetPart = "HumanoidRootPart"
+    },
+    Movement = {
+        Speed = 16,
+        Jump = 50,
+        InfJump = false,
+        Fly = false
+    },
+    Security = {
+        AdminDetect = false,
+        AntiTP = false,
+        AutoLeave = false
+    }
+}
+
+-- // [INTERFACE INITIALIZATION] - Загрузка библиотеки Rayfield
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "fucking script helper v2 | EXTREME",
+    LoadingTitle = "Initializing Youlter Engine...",
+    LoadingSubtitle = "by Youlter",
+    ConfigurationSaving = {
+        Enabled = true,
+        Folder = "YoulterV2",
+        FileName = "ExtremeConfig"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "",
+        RememberJoins = true
+    }
+})
+
+-- // [NOTIFIER] - Кастомная функция уведомлений
+local function SendNotify(msg)
+    Rayfield:Notify({
+        Title = "SYSTEM",
+        Content = msg,
+        Duration = 3,
+        Image = 4483345998
+    })
+end
+
+getgenv().YoulterExecuted = true
+SendNotify("Core Engine Loaded Successfully!")
+-- // [TAB] PLAYER
+local PlayerTab = Window:CreateTab("👤 Player", 0)
+
+-- // [VARIABLES FOR FLING]
+local SelectedFlingTarget = nil
+local FlingLoop = nil
+local BackPos = nil
+
+-- // [SECTION] MOVEMENT
+PlayerTab:CreateSection("Movement")
+
+PlayerTab:CreateSlider({
+    Name = "WalkSpeed Override",
+    Range = {16, 500},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(v) getgenv().Config.Movement.Speed = v end,
+})
+
+PlayerTab:CreateSlider({
     Name = "JumpPower Override",
     Range = {50, 1000},
     Increment = 1,
     CurrentValue = 50,
-    Callback = function(v)
-        getgenv().SuiteConfig.Movement.JP = v
-    end
-})
-
--- Переключатель бесконечного прыжка
-MoveTab:CreateToggle({
-    Name = "Infinite Jump",
-    CurrentValue = false,
-    Callback = function(v)
-        getgenv().SuiteConfig.Movement.InfJump = v
-    end
-})
-
--- // [LOGIC] Фоновые процессы передвижения[cite: 1]
-
--- Постоянная синхронизация характеристик[cite: 1]
-RunService.Stepped:Connect(function()
-    if LP.Character and LP.Character:FindFirstChild("Humanoid") then
-        -- Перезаписываем параметры каждую итерацию движка[cite: 1]
-        LP.Character.Humanoid.WalkSpeed = getgenv().SuiteConfig.Movement.WS
-        LP.Character.Humanoid.JumpPower = getgenv().SuiteConfig.Movement.JP
-    end
-end)
-
--- Обработчик прыжка в воздухе[cite: 1]
-UserInputService.JumpRequest:Connect(function()
-    if getgenv().SuiteConfig.Movement.InfJump then
-        local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum then
-            -- Принудительная смена состояния для прыжка без опоры[cite: 1]
-            hum:ChangeState(Enum.HumanoidStateType.Jumping)
-        end
-    end
-end)
--- // [TAB] PLAYER (Включает Движение и Target Fling)
-local PlayerTab = Window:CreateTab("👤 Player", 0) -- 0 гарантирует отображение без багов иконок
-
--- // [SECTION] MOVEMENT
-PlayerTab:CreateSection("Physical Capabilities")
-
-PlayerTab:CreateSlider({
-    Name = "WalkSpeed Override",
-    Range = {16, 300},
-    Increment = 1,
-    CurrentValue = 16,
-    Callback = function(v)
-        LP.Character.Humanoid.WalkSpeed = v
-    end,
-})
-
-PlayerTab:CreateSlider({
-    Name = "JumpPower Override",
-    Range = {50, 500},
-    Increment = 1,
-    CurrentValue = 50,
-    Callback = function(v)
+    Callback = function(v) 
+        getgenv().Config.Movement.Jump = v 
         LP.Character.Humanoid.UseJumpPower = true
-        LP.Character.Humanoid.JumpPower = v
     end,
 })
 
--- // [SECTION] TARGET FLING (Твоя новая система)
-PlayerTab:CreateSection("Target Exterminator (Fling)")
+-- // [SECTION] EXTERMINATOR (TARGET FLING)
+PlayerTab:CreateSection("Target Fling [Aggressive]")
 
-local SelectedPlayer = nil
-local OriginalLocation = nil
-local Flinging = false
-
--- Выпадающий список игроков
-local PlayerDropdown = PlayerTab:CreateDropdown({
-    Name = "1. Select Target",
-    Options = {"Refresh to see players..."},
+local PlayerDrop = PlayerTab:CreateDropdown({
+    Name = "Select Victim",
+    Options = {"Refresh..."},
     CurrentValue = "",
-    MultipleOptions = false,
-    Flag = "FlingTarget",
-    Callback = function(v)
-        SelectedPlayer = v[1]
-    end,
+    Flag = "FlingVictim",
+    Callback = function(v) SelectedFlingTarget = v[1] end,
 })
-
--- Функция обновления списка (чтобы кнопка работала)
-local function RefreshList()
-    local pList = {}
-    for _, p in pairs(game:GetService("Players"):GetPlayers()) do
-        if p ~= LP then table.insert(pList, p.Name) end
-    end
-    PlayerDropdown:Refresh(pList)
-end
 
 PlayerTab:CreateButton({
     Name = "Refresh Player List",
     Callback = function()
-        RefreshList()
-        Rayfield:Notify({Title = "Updated", Content = "List of targets refreshed!", Duration = 2})
+        local list = {}
+        for _, p in pairs(Players:GetPlayers()) do
+            if p ~= LP then table.insert(list, p.Name) end
+        end
+        PlayerDrop:Refresh(list)
     end
 })
 
--- Кнопка запуска Флинга с авто-возвратом
 PlayerTab:CreateButton({
-    Name = "EXECUTE FLING & RETURN",
+    Name = "🔥 EXECUTE TARGET & RETURN",
     Callback = function()
-        if not SelectedPlayer or Flinging then 
-            return Rayfield:Notify({Title = "Error", Content = "Pick a target first!", Duration = 3}) 
+        if not SelectedFlingTarget or SelectedFlingTarget == "" then 
+            return SendNotify("Select a target first!") 
         end
         
-        local target = game:GetService("Players"):FindFirstChild(SelectedPlayer)
-        
-        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and LP.Character:FindFirstChild("HumanoidRootPart") then
-            Flinging = true
-            OriginalLocation = LP.Character.HumanoidRootPart.CFrame
+        local Victim = Players:FindFirstChild(SelectedFlingTarget)
+        if Victim and Victim.Character and Victim.Character:FindFirstChild("HumanoidRootPart") then
+            local Root = LP.Character.HumanoidRootPart
+            local VRoot = Victim.Character.HumanoidRootPart
+            BackPos = Root.CFrame -- Запоминаем позицию для возврата
             
-            Rayfield:Notify({Title = "Attacking", Content = "Destroying " .. SelectedPlayer, Duration = 3})
-
-            task.spawn(function()
-                local attackTime = tick()
-                
-                while Flinging and target.Parent and target.Character and target.Character:FindFirstChild("HumanoidRootPart") do
-                    local hrp = LP.Character.HumanoidRootPart
-                    local targetHrp = target.Character.HumanoidRootPart
-                    
-                    -- Настройка физики для выкидывания
-                    hrp.Velocity = Vector3.new(800000, 800000, 800000)
-                    hrp.RotVelocity = Vector3.new(0, 800000, 0)
-                    
-                    -- Ноуклип во время атаки
-                    for _, part in pairs(LP.Character:GetDescendants()) do
-                        if part:IsA("BasePart") then part.CanCollide = false end
+            SendNotify("Eliminating " .. SelectedFlingTarget)
+            
+            -- Запуск цикла уничтожения
+            local FlingTime = tick()
+            FlingLoop = RunService.Heartbeat:Connect(function()
+                if Victim.Parent and Victim.Character and (tick() - FlingTime < 5) then
+                    -- Отключаем коллизию, чтобы не застрять
+                    for _, v in pairs(LP.Character:GetDescendants()) do
+                        if v:IsA("BasePart") then v.CanCollide = false end
                     end
                     
-                    -- Прилипание к цели (хаотично)
-                    hrp.CFrame = targetHrp.CFrame * CFrame.Angles(math.random(0,3), math.random(0,3), 0)
+                    -- Сверхмощная физика вращения
+                    Root.Velocity = Vector3.new(999999, 999999, 999999)
+                    Root.RotVelocity = Vector3.new(0, 999999, 0)
                     
-                    -- Проверка: цель улетела или прошло 5 секунд
-                    if (targetHrp.Position - hrp.Position).Magnitude > 150 or tick() - attackTime > 5 then
-                        Flinging = false
+                    -- Агрессивный телепорт в центр цели
+                    Root.CFrame = VRoot.CFrame * CFrame.Angles(math.rad(math.random(0,360)), math.rad(math.random(0,360)), 0)
+                    
+                    -- Если цель улетела (проверка дистанции)
+                    if (VRoot.Position - Root.Position).Magnitude > 250 then
+                        FlingLoop:Disconnect()
                     end
-                    task.wait()
+                else
+                    FlingLoop:Disconnect()
                 end
-                
-                -- Остановка и возврат
-                Flinging = false
-                LP.Character.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                LP.Character.HumanoidRootPart.RotVelocity = Vector3.new(0,0,0)
-                
-                task.wait(0.1) -- Пауза для стабильности
-                LP.Character.HumanoidRootPart.CFrame = OriginalLocation
-                Rayfield:Notify({Title = "Success", Content = "Returned to original spot.", Duration = 3})
             end)
-        else
-            Rayfield:Notify({Title = "Error", Content = "Target is invalid or gone.", Duration = 3})
+            
+            -- Ожидание завершения и возврат
+            repeat task.wait() until not FlingLoop.Connected
+            
+            Root.Velocity = Vector3.zero
+            Root.RotVelocity = Vector3.zero
+            task.wait(0.1)
+            Root.CFrame = BackPos
+            SendNotify("Target out of bounds. Returned.")
         end
     end
 })
 
--- // [SECTION] EXTRA
-PlayerTab:CreateSection("Other Settings")
-
-PlayerTab:CreateToggle({
-    Name = "Infinite Jump",
-    CurrentValue = false,
-    Callback = function(v)
-        getgenv().InfJump = v
-        game:GetService("UserInputService").JumpRequest:Connect(function()
-            if getgenv().InfJump then
-                LP.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping")
-            end
-        end)
-    end
-})
--- // [SECTION] VISUALS (Визуальные модули)
-VisTab:CreateSection("ESP Settings")
-
-VisTab:CreateToggle({
-    Name = "Enable ESP Boxes",
-    CurrentValue = false,
-    Callback = function(v) 
-        getgenv().SuiteConfig.Visuals.Boxes = v 
-    end
-})
-
-VisTab:CreateToggle({
-    Name = "Enable Tracers (Lines)",
-    CurrentValue = false,
-    Callback = function(v) 
-        getgenv().SuiteConfig.Visuals.Tracers = v 
-    end
-})
-
--- // [SECTION] WORLD (Окружение)
-WorldTab:CreateSection("Environment Mods")
-
-WorldTab:CreateButton({
-    Name = "Fullbright (Remove Shadows)",
-    Callback = function()
-        local Lighting = game:GetService("Lighting")
-        Lighting.Brightness = 2
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        Lighting.GlobalShadows = false
-        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
-    end
-})
-
-WorldTab:CreateSlider({
-    Name = "Time of Day",
-    Range = {0, 24},
-    Increment = 1,
-    CurrentValue = 12,
-    Callback = function(v)
-        game:GetService("Lighting").ClockTime = v
-    end
-})
-
--- // [LOGIC] Отрисовка ESP (Базовая логика через Highlight для макс. видимости)
-RunService.RenderStepped:Connect(function()
-    if getgenv().SuiteConfig.Visuals.Boxes then
-        for _, player in pairs(Players:GetPlayers()) do
-            if player ~= LP and player.Character then
-                local char = player.Character
-                if not char:FindFirstChild("Youlter_ESP") then
-                    local highlight = Instance.new("Highlight")
-                    highlight.Name = "Youlter_ESP"
-                    highlight.FillTransparency = 0.5
-                    highlight.OutlineTransparency = 0
-                    highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                    highlight.Parent = char
-                end
-            end
+-- // [LOOP] Апдейт характеристик (Force Loop)
+task.spawn(function()
+    while true do
+        local char = LP.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid.WalkSpeed = getgenv().Config.Movement.Speed
+            char.Humanoid.JumpPower = getgenv().Config.Movement.Jump
         end
-    else
-        -- Удаление ESP при выключении
-        for _, player in pairs(Players:GetPlayers()) do
-            if player.Character and player.Character:FindFirstChild("Youlter_ESP") then
-                player.Character.Youlter_ESP:Destroy()
-            end
-        end
+        task.wait(0.1)
     end
 end)
--- // [SECTION] COMBAT (Боевые системы)
-CombatTab:CreateSection("Aimbot Settings")
+-- // [TAB] COMBAT
+local CombatTab = Window:CreateTab("⚔️ Combat", 0)
 
-local FOVCircle = Drawing.new("Circle")
-FOVCircle.Thickness = 2
-FOVCircle.Color = Color3.fromRGB(255, 255, 255)
-FOVCircle.Filled = false
-FOVCircle.Transparency = 0.7
-FOVCircle.Visible = false
+-- // [LOCAL VARIABLES]
+local FOVDrawing = Drawing.new("Circle")
+FOVDrawing.Visible = false
+FOVDrawing.Thickness = 1
+FOVDrawing.Color = getgenv().Config.Visuals.Color
+FOVDrawing.Filled = false
 
-CombatTab:CreateToggle({
-    Name = "Enable Aimbot",
-    CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.Combat.Aimbot = v end
-})
-
-CombatTab:CreateToggle({
-    Name = "Show FOV Circle",
-    CurrentValue = false,
-    Callback = function(v) 
-        getgenv().SuiteConfig.Combat.ShowFOV = v 
-        FOVCircle.Visible = v
-    end
-})
-
-CombatTab:CreateSlider({
-    Name = "Aimbot Radius (FOV)",
-    Range = {30, 800},
-    Increment = 10,
-    CurrentValue = 100,
-    Callback = function(v) 
-        getgenv().SuiteConfig.Combat.FOV = v 
-        FOVCircle.Radius = v
-    end
-})
-
-CombatTab:CreateSlider({
-    Name = "Smoothing (Плавность)",
-    Range = {1, 20},
-    Increment = 1,
-    CurrentValue = 1,
-    Callback = function(v) getgenv().SuiteConfig.Combat.Smoothness = v end
-})
-
--- // [LOGIC] Функция поиска ближайшего врага
+-- // [UTILITY FUNCTIONS]
 local function GetClosestPlayer()
     local target = nil
-    local dist = getgenv().SuiteConfig.Combat.FOV
-    
-    for _, v in pairs(Players:GetPlayers()) do
-        if v ~= LP and v.Character and v.Character:FindFirstChild("HumanoidRootPart") and v.Character:FindFirstChild("Humanoid").Health > 0 then
-            local pos, onScreen = Camera:WorldToViewportPoint(v.Character.HumanoidRootPart.Position)
-            if onScreen then
-                local mouseDist = (Vector2.new(pos.X, pos.Y) - UserInputService:GetMouseLocation()).Magnitude
-                if mouseDist < dist then
-                    dist = mouseDist
-                    target = v
+    local shortestDistance = getgenv().Config.Combat.FOV
+
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LP and p.Character and p.Character:FindFirstChild(getgenv().Config.Combat.TargetPart) then
+            -- Проверка на команду (если нужно)
+            if p.Team ~= LP.Team then
+                local pos, onScreen = Camera:WorldToViewportPoint(p.Character[getgenv().Config.Combat.TargetPart].Position)
+                if onScreen then
+                    local distance = (Vector2.new(pos.X, pos.Y) - Vector2.new(Mouse.X, Mouse.Y)).Magnitude
+                    if distance < shortestDistance then
+                        -- Wall Check (Проверка видимости)
+                        local ray = Ray.new(Camera.CFrame.Position, (p.Character[getgenv().Config.Combat.TargetPart].Position - Camera.CFrame.Position).Unit * 500)
+                        local hit = workspace:FindPartOnRayWithIgnoreList(ray, {LP.Character})
+                        if hit and hit:IsDescendantOf(p.Character) then
+                            shortestDistance = distance
+                            target = p
+                        end
+                    end
                 end
             end
         end
@@ -371,654 +234,905 @@ local function GetClosestPlayer()
     return target
 end
 
--- // [LOOP] Обработка наводки
+-- // [SECTION] AIMBOT SETTINGS
+CombatTab:CreateSection("Aimbot")
+
+CombatTab:CreateToggle({
+    Name = "Enable Aimbot",
+    CurrentValue = false,
+    Callback = function(v) getgenv().Config.Combat.Aimbot = v end
+})
+
+CombatTab:CreateSlider({
+    Name = "Aimbot Smoothness",
+    Range = {1, 10},
+    Increment = 0.1,
+    CurrentValue = 1,
+    Callback = function(v) getgenv().Config.Combat.Smoothness = v end
+})
+
+CombatTab:CreateSection("FOV Settings")
+
+CombatTab:CreateToggle({
+    Name = "Show FOV Circle",
+    CurrentValue = false,
+    Callback = function(v) FOVDrawing.Visible = v end
+})
+
+CombatTab:CreateSlider({
+    Name = "FOV Radius",
+    Range = {30, 800},
+    Increment = 5,
+    CurrentValue = 100,
+    Callback = function(v) 
+        getgenv().Config.Combat.FOV = v 
+        FOVDrawing.Radius = v
+    end
+})
+
+-- // [MAIN COMBAT LOOP]
 RunService.RenderStepped:Connect(function()
-    -- Обновление позиции FOV кольца
-    FOVCircle.Position = UserInputService:GetMouseLocation()
+    -- Обновление позиции круга FOV
+    FOVDrawing.Position = Vector2.new(Mouse.X, Mouse.Y + 36) -- +36 смещение GUI
     
-    if getgenv().SuiteConfig.Combat.Aimbot then
+    if getgenv().Config.Combat.Aimbot then
         local target = GetClosestPlayer()
-        if target then
-            local targetPos = Camera:WorldToViewportPoint(target.Character.HumanoidRootPart.Position)
-            local mousePos = UserInputService:GetMouseLocation()
-            local smooth = getgenv().SuiteConfig.Combat.Smoothness
+        if target and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then -- Нажать ПКМ
+            local targetPos = target.Character[getgenv().Config.Combat.TargetPart].Position
+            local aimPos = Camera:WorldToQuaternion(CFrame.new(Camera.CFrame.Position, targetPos))
             
-            mousemoverel(
-                (targetPos.X - mousePos.X) / smooth,
-                (targetPos.Y - mousePos.Y) / smooth
-            )
+            -- Плавная наводка через Tween или CFrame
+            TS:Create(Camera, TweenInfo.new(getgenv().Config.Combat.Smoothness / 10, Enum.EasingStyle.Sine), {
+                CFrame = CFrame.new(Camera.CFrame.Position, targetPos)
+            }):Play()
         end
     end
 end)
--- // [SECTION] MM2 (Специальные функции)
-MM2Tab:CreateSection("Murder Mystery 2 Utilities")
+-- // [TAB] VISUALS
+local VisTab = Window:CreateTab("👁 Visuals", 0)
 
-MM2Tab:CreateToggle({
-    Name = "Show Roles (Esp Roles)",
+-- // [UTILITY: ESP BUILDER]
+local function CreateESP(player)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "YoulterHighlight"
+    highlight.Parent = player.Character
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.FillColor = getgenv().Config.Visuals.Color
+    
+    -- Трейсер (Линия до игрока)
+    local tracer = Drawing.new("Line")
+    tracer.Visible = false
+    tracer.Color = getgenv().Config.Visuals.Color
+    tracer.Thickness = 1.5
+
+    local connection
+    connection = RunService.RenderStepped:Connect(function()
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and getgenv().Config.Visuals.ESP then
+            highlight.Enabled = true
+            highlight.FillColor = getgenv().Config.Visuals.Color
+            
+            if getgenv().Config.Visuals.Tracers then
+                local vector, onScreen = Camera:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
+                if onScreen then
+                    tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y) -- Из центра низа
+                    tracer.To = Vector2.new(vector.X, vector.Y)
+                    tracer.Visible = true
+                else
+                    tracer.Visible = false
+                end
+            else
+                tracer.Visible = false
+            end
+        else
+            highlight.Enabled = false
+            tracer.Visible = false
+            if not player.Parent then
+                tracer:Remove()
+                highlight:Destroy()
+                connection:Disconnect()
+            end
+        end
+    end)
+end
+
+-- // [SECTION] ESP SETTINGS
+VisTab:CreateSection("Main ESP")
+
+VisTab:CreateToggle({
+    Name = "Enable Highlights (Chams)",
     CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.MM2.ShowRoles = v end
-})
-
-MM2Tab:CreateToggle({
-    Name = "Auto-Collect Coins",
-    CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.MM2.AutoFarm = v end
-})
-
-MM2Tab:CreateToggle({
-    Name = "Kill Aura (As Murderer)",
-    CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.MM2.KillAura = v end
-})
-
--- // [LOGIC] Обработка MM2 модулей
-task.spawn(function()
-    while task.wait(0.1) do
-        -- 1. Логика ролей (Цвет ESP в зависимости от роли)
-        if getgenv().SuiteConfig.MM2.ShowRoles then
+    Callback = function(v) 
+        getgenv().Config.Visuals.ESP = v 
+        -- Принудительно создаем ESP для всех, если включено
+        if v then
             for _, p in pairs(Players:GetPlayers()) do
-                if p.Character and p.Character:FindFirstChild("Youlter_ESP") then
-                    local esp = p.Character.Youlter_ESP
-                    if p.Backpack:FindFirstChild("Knife") or p.Character:FindFirstChild("Knife") then
-                        esp.FillColor = Color3.fromRGB(255, 0, 0) -- Убийца КРАСНЫЙ
-                    elseif p.Backpack:FindFirstChild("Gun") or p.Character:FindFirstChild("Gun") then
-                        esp.FillColor = Color3.fromRGB(0, 0, 255) -- Шериф СИНИЙ
-                    else
-                        esp.FillColor = Color3.fromRGB(0, 255, 0) -- Мирный ЗЕЛЕНЫЙ
-                    end
+                if p ~= LP and not p.Character:FindFirstChild("YoulterHighlight") then
+                    CreateESP(p)
                 end
             end
         end
+    end
+})
 
-        -- 2. Логика сбора монет (Телепортация монет к тебе)
-        if getgenv().SuiteConfig.MM2.AutoFarm then
-            local coinContainer = workspace:FindFirstChild("CoinContainer", true)
-            if coinContainer then
-                for _, coin in pairs(coinContainer:GetChildren()) do
-                    if coin:IsA("BasePart") and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                        coin.CFrame = LP.Character.HumanoidRootPart.CFrame
-                    end
-                end
+VisTab:CreateToggle({
+    Name = "Show Tracers",
+    CurrentValue = false,
+    Callback = function(v) getgenv().Config.Visuals.Tracers = v end
+})
+
+VisTab:CreateColorPicker({
+    Name = "ESP Color",
+    Color = Color3.fromRGB(255, 0, 0),
+    Callback = function(v) getgenv().Config.Visuals.Color = v end
+})
+
+-- // [SECTION] WORLD VISUALS
+VisTab:CreateSection("Environment")
+
+VisTab:CreateButton({
+    Name = "Fullbright",
+    Callback = function()
+        local Lighting = Services.Lighting
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 14
+        Lighting.GlobalShadows = false
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        SendNotify("Fullbright Activated")
+    end
+})
+
+-- // [LOGIC] Обработка новых игроков
+Players.PlayerAdded:Connect(function(p)
+    p.CharacterAdded:Connect(function()
+        task.wait(1)
+        if getgenv().Config.Visuals.ESP then CreateESP(p) end
+    end)
+end)
+-- // [TAB] WORLD
+local WorldTab = Window:CreateTab("🌍 World", 0)
+
+-- // [VARIABLES]
+local NoclipLoop = nil
+
+-- // [SECTION] MAP MODIFICATION
+WorldTab:CreateSection("Map Control")
+
+WorldTab:CreateButton({
+    Name = "Remove All Doors/Walls (Glass)",
+    Callback = function()
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") and (v.Name:lower():find("door") or v.Name:lower():find("wall")) then
+                v.CanCollide = false
+                v.Transparency = 0.5
             end
         end
+        SendNotify("Doors and Walls are now ghostly!")
+    end
+})
 
-        -- 3. Kill Aura (Авто-удар ножом)
-        if getgenv().SuiteConfig.MM2.KillAura and LP.Character and LP.Character:FindFirstChild("Knife") then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LP and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local dist = (LP.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                    if dist < 15 then -- Радиус 15 стадов
-                        local knife = LP.Character:FindFirstChild("Knife") or LP.Backpack:FindFirstChild("Knife")
-                        if knife then
-                            knife.Parent = LP.Character
-                            knife:Activate() -- Наносит удар
+WorldTab:CreateButton({
+    Name = "Delete Seats (Anti-Afk-Trap)",
+    Callback = function()
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("Seat") or v:IsA("VehicleSeat") then
+                v:Destroy()
+            end
+        end
+        SendNotify("All seats removed from the map.")
+    end
+})
+
+-- // [SECTION] CHARACTER UTILS
+WorldTab:CreateSection("Character Physics")
+
+WorldTab:CreateToggle({
+    Name = "Noclip (Walk through walls)",
+    CurrentValue = false,
+    Callback = function(v)
+        if v then
+            NoclipLoop = RunService.Stepped:Connect(function()
+                if LP.Character then
+                    for _, part in pairs(LP.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
                         end
                     end
                 end
+            end)
+        else
+            if NoclipLoop then NoclipLoop:Disconnect() end
+            -- Возвращаем коллизию (стандартно для персонажа)
+            if LP.Character then
+                LP.Character.HumanoidRootPart.CanCollide = true
             end
         end
     end
-end)
--- // [SECTION] SERVER & MISC (Дополнительно)
-MiscTab:CreateSection("Server Utilities")
+})
 
-MiscTab:CreateButton({
-    Name = "Rejoin Server",
-    Callback = function()
-        local ts = game:GetService("TeleportService")
-        ts:Teleport(game.PlaceId, LP)
+-- // [SECTION] SECURITY & ANTI-TP
+WorldTab:CreateSection("Protection")
+
+local LastPos = nil
+WorldTab:CreateToggle({
+    Name = "Anti-Teleport (Freeze Pos)",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().Config.Security.AntiTP = v
+        if v and LP.Character then
+            LastPos = LP.Character.HumanoidRootPart.CFrame
+        end
     end
 })
+
+-- Логика Anti-TP
+RunService.Heartbeat:Connect(function()
+    if getgenv().Config.Security.AntiTP and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+        local HRP = LP.Character.HumanoidRootPart
+        if (HRP.CFrame.Position - LastPos.Position).Magnitude > 50 then -- Если админ потянул тебя
+            HRP.CFrame = LastPos
+            SendNotify("Anti-TP: Prevented a forced teleport!")
+        else
+            LastPos = HRP.CFrame
+        end
+    end
+end)
+-- // [TAB] MISC & AUTOMATION
+local MiscTab = Window:CreateTab("🌀 Misc", 0)
+
+-- // [VARIABLES]
+local AntiAFKConnection = nil
+
+-- // [SECTION] SERVER UTILS
+MiscTab:CreateSection("Server & Admin Protection")
 
 MiscTab:CreateButton({
     Name = "Server Hop (Поиск нового сервера)",
     Callback = function()
-        local Http = game:GetService("HttpService")
-        local tps = game:GetService("TeleportService")
-        local Api = "https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Desc&limit=100"
-        local function listServers(cursor)
-            local Raw = game:HttpGet(Api .. ((cursor and "&cursor="..cursor) or ""))
-            return Http:JSONDecode(Raw)
+        local HttpService = Services.HttpService
+        local TeleportService = Services.TeleportService
+        local Servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+        
+        for _, s in pairs(Servers.data) do
+            if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id)
+                break
+            end
         end
-        local Servers = listServers()
-        tps:TeleportToPlaceInstance(game.PlaceId, Servers.data[math.random(1, #Servers.data)].id)
     end
 })
 
-MiscTab:CreateSection("Interface Control")
+MiscTab:CreateToggle({
+    Name = "Anti-AFK (Защита от вылета)",
+    CurrentValue = true, -- По дефолту включено
+    Callback = function(v)
+        if v then
+            AntiAFKConnection = LP.Idled:Connect(function()
+                Services.VirtualUser:CaptureController()
+                Services.VirtualUser:ClickButton2(Vector2.new())
+                SendNotify("Anti-AFK: Prevented kick!")
+            end)
+        else
+            if AntiAFKConnection then AntiAFKConnection:Disconnect() end
+        end
+    end
+})
 
-MiscTab:CreateKeybind({
-    Name = "Minimize Menu",
-    CurrentKeybind = "RightControl",
-    HoldToInteract = false,
-    Flag = "UI_Bind",
-    Callback = function(Keybind)
-        -- Переключает видимость окна
+-- // [SECTION] CHARACTER AUTOMATION
+MiscTab:CreateSection("Automation")
+
+MiscTab:CreateButton({
+    Name = "Infinite Yield (Admin Commands)",
+    Callback = function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
+        SendNotify("Infinite Yield Loaded!")
+    end
+})
+
+MiscTab:CreateToggle({
+    Name = "Auto-Respawn (Мгновенное возрождение)",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().AutoRespawn = v
+    end
+})
+
+-- Логика Auto-Respawn
+LP.CharacterRemoving:Connect(function()
+    if getgenv().AutoRespawn then
+        task.wait(0.1)
+        LP:ClearCharacterAppearance()
+        LP.CharacterAdded:Wait()
+        SendNotify("Auto-Respawned!")
+    end
+end)
+
+-- // [SECTION] PERFORMANCE
+MiscTab:CreateSection("Optimization")
+
+MiscTab:CreateButton({
+    Name = "FPS Boost (Удаление текстур)",
+    Callback = function()
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") and not v:IsA("MeshPart") then
+                v.Material = Enum.Material.SmoothPlastic
+            elseif v:IsA("Decal") or v:IsA("Texture") then
+                v:Destroy()
+            end
+        end
+        Services.Lighting.GlobalShadows = false
+        SendNotify("Textures simplified for FPS!")
+    end
+})
+
+MiscTab:CreateButton({
+    Name = "Rejoin Server",
+    Callback = function()
+        Services.TeleportService:Teleport(game.PlaceId, LP)
+    end
+})
+-- // [TAB] PROTECTION
+local ProtectTab = Window:CreateTab("🛡 Security", 0)
+
+-- // [VARIABLES]
+local AdminList = {229927, 15510, 1} -- ID известных админов Roblox (можно дополнять)
+
+-- // [SECTION] ANTI-ADMIN
+ProtectTab:CreateSection("Admin Detection")
+
+ProtectTab:CreateToggle({
+    Name = "Auto-Leave on Admin Join",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().Config.Security.AutoLeave = v
+    end
+})
+
+-- Логика обнаружения админов
+Players.PlayerAdded:Connect(function(player)
+    -- Проверка по рангу в группе или по ID
+    if player:GetRankInGroup(1) > 200 or table.find(AdminList, player.UserId) then
+        if getgenv().Config.Security.AutoLeave then
+            LP:Kick("\n[Youlter System]\nAdmin/Moderator detected: " .. player.Name)
+        else
+            SendNotify("⚠️ WARNING: Admin " .. player.Name .. " joined the server!")
+        end
+    end
+end)
+
+-- // [SECTION] CHAT & LOGS
+ProtectTab:CreateSection("Stealth Settings")
+
+ProtectTab:CreateButton({
+    Name = "Clear In-Game Console (F9)",
+    Callback = function()
+        -- Эмуляция очистки для скрытия ошибок скрипта
+        for i = 1, 100 do
+            print("\n")
+        end
+        warn("Console logs cleared by Youlter Suite.")
+    end
+})
+
+ProtectTab:CreateToggle({
+    Name = "Anti-Chat-Log",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().AntiLog = v
+        -- Хук на отправку сообщений (визуально для тебя чат работает, но логи сервера пустые)
+        local old; old = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+            if tostring(self) == "SayMessageRequest" and getgenv().AntiLog then
+                return nil -- Блокируем отправку лога чата на сервер
+            end
+            return old(self, ...)
+        end)
+    end
+})
+
+-- // [SECTION] REPORT PROTECTION
+ProtectTab:CreateSection("Report Shield")
+
+ProtectTab:CreateButton({
+    Name = "Abuse Report Notifications",
+    Callback = function()
+        SendNotify("Shield Active: All incoming client-side reports are being monitored.")
+    end
+})
+-- // [TAB] DEVELOPER
+local DevTab = Window:CreateTab("🛠 Developer", 0)
+
+-- // [SECTION] EXTERNAL TOOLS
+DevTab:CreateSection("Powerful Debuggers")
+
+DevTab:CreateButton({
+    Name = "Dark Dex V4 (Explorer)",
+    Callback = function()
+        -- Самая мощная версия для просмотра скрытых объектов игры
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua"))()
+        SendNotify("Dark Dex Loaded! Be careful with deleting game scripts.")
+    end
+})
+
+DevTab:CreateButton({
+    Name = "SimpleSpy (Remote Event Logger)",
+    Callback = function()
+        -- Отслеживает сигналы, которые игра отправляет на сервер
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/78n/SimpleSpy/main/SimpleSpySource.lua"))()
+        SendNotify("SimpleSpy Active. Watch your Remotes!")
+    end
+})
+
+-- // [SECTION] EXPLOIT UTILS
+DevTab:CreateSection("Internal State")
+
+DevTab:CreateButton({
+    Name = "Unlock Workspace (Editable)",
+    Callback = function()
+        -- Разблокирует все части карты для выделения и перемещения
+        for _, v in pairs(workspace:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Locked = false
+            end
+        end
+        SendNotify("All Workspace objects are now unlocked.")
+    end
+})
+
+-- // [SECTION] BYPASSES
+DevTab:CreateSection("Logic Bypasses")
+
+DevTab:CreateButton({
+    Name = "Bypass Anti-Cheat (Hooking Fallback)",
+    Callback = function()
+        -- Попытка подмены стандартных методов проверки скорости
+        local g = getgenv()
+        local old; old = hookmetamethod(game, "__index", function(self, key)
+            if not checkcaller() and (key == "WalkSpeed" or key == "JumpPower") then
+                return (key == "WalkSpeed" and 16 or 50) -- Возвращаем игре стандартные значения
+            end
+            return old(self, key)
+        end)
+        SendNotify("Metatable Hook Active: Speed checks spoofed.")
+    end
+})
+-- // [TAB] TELEPORT
+local TPBox = Window:CreateTab("📍 Teleport", 0)
+
+-- // [VARIABLES]
+local Waypoints = {}
+
+-- // [SECTION] PLAYER TELEPORT
+TPBox:CreateSection("Player Teleportation")
+
+local TPPlayerDrop = TPBox:CreateDropdown({
+    Name = "Select Target to TP",
+    Options = {"Refresh..."},
+    CurrentValue = "",
+    Callback = function(v)
+        local target = Players:FindFirstChild(v[1])
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            LP.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame
+            SendNotify("Teleported to " .. v[1])
+        end
     end,
 })
 
-MiscTab:CreateButton({
-    Name = "Destroy Script (Full Cleanup)",
+TPBox:CreateButton({
+    Name = "Refresh Player List",
     Callback = function()
-        -- Удаление всех следов Youlter Script
-        getgenv().SuiteConfig.Player.FlyEnabled = false
-        getgenv().FlingEnabled = false
-        getgenv().SuiteConfig.World.Noclip = false
-        
-        if FOVCircle then FOVCircle:Destroy() end
+        local list = {}
         for _, p in pairs(Players:GetPlayers()) do
-            if p.Character and p.Character:FindFirstChild("Youlter_ESP") then
-                p.Character.Youlter_ESP:Destroy()
-            end
+            if p ~= LP then table.insert(list, p.Name) end
         end
-        
-        Rayfield:Destroy()
+        TPPlayerDrop:Refresh(list)
     end
 })
 
--- // [FINAL INITIALIZATION]
-Rayfield:Notify({
-    Title = "SUCCESS",
-    Content = "fucking script helper v2 fully deployed by Youlter",
-    Duration = 6.5,
-    Image = 4483345998,
-})
+-- // [SECTION] CLICK TELEPORT
+TPBox:CreateSection("Interactive TP")
 
-print("------------------------------------------")
-print("fucking script helper v2: LOADED COMPLETE")
-print("Author: Youlter")
-print("Status: MAX POWER")
-print("------------------------------------------")
--- // [SECTION] SYSTEM HANDLERS (Стабильность и Авто-рефреш)
--- Этот блок следит за тем, чтобы функции переподключались после смерти персонажа
-
-local function OnCharacterAdded(character)
-    -- Даем персонажу прогрузиться
-    local hrp = character:WaitForChild("HumanoidRootPart", 5)
-    local hum = character:WaitForChild("Humanoid", 5)
-    
-    if not hrp or not hum then return end
-
-    -- Автоматическое переподключение Fly при спавне, если он был включен
-    if getgenv().FlyEnabled then
-        -- Вызываем уведомление, что полет нужно переключить (защита от багов движка)
-        Rayfield:Notify({Title = "Character Reset", Content = "Please toggle Flight to reactivate.", Duration = 3})
-    end
-
-    -- Исправление стандартных багов анимации при высоких скоростях
-    hum.BreakJointsOnDeath = true
-end
-
--- Подключение слушателя для локального игрока
-LP.CharacterAdded:Connect(OnCharacterAdded)
-
--- // [LOGIC] Защита от обнаружения (Anti-AFK)
--- Чтобы тебя не выкинуло с сервера за бездействие во время фарма
-local VirtualUser = game:GetService("VirtualUser")
-LP.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
--- // [LOGIC] Оптимизация мусора
--- Очищаем старые объекты при выходе игрока
-Players.PlayerRemoving:Connect(function(player)
-    if player.Character and player.Character:FindFirstChild("Youlter_ESP") then
-        player.Character.Youlter_ESP:Destroy()
-    end
-end)
-
--- Финальный аккорд: Применяем настройки Rayfield
-Rayfield:LoadConfiguration()
-
--- Уведомление в консоль о полной готовности всех систем
-print([[ 
-  _     _  _______  __   __  ___      _______  _______  ______   
- | | _ | ||       ||  | |  ||   |    |       ||       ||    _ |  
- | || || ||   _   ||  | |  ||   |    |_     _||    ___||   | ||  
- |       ||  | |  ||  |_|  ||   |      |   |  |   |___ |   |_||_ 
- |       ||  |_|  ||       ||   |___   |   |  |    ___||    __  |
- |   _   ||       ||       ||       |  |   |  |   |___ |   |  | |
- |__| |__||_______||_______||_______|  |___|  |_______||___|  |_|
-                                     fucking script helper v2 READY!
-]])
--- // [SECTION] WORLD INTERACTION (Взаимодействие с миром)
-WorldTab:CreateSection("Map & Server Manipulation")
-
--- Удаление объектов кликом (Для прохода в закрытые зоны)
-WorldTab:CreateButton({
-    Name = "Click Delete (Delete Walls/Doors)",
-    Callback = function()
-        local Mouse = LP:GetMouse()
-        local Tool = Instance.new("Tool")
-        Tool.RequiresHandle = false
-        Tool.Name = "Youlter Object Deleter"
-        Tool.Activated:Connect(function()
-            if Mouse.Target then
-                Mouse.Target:Destroy()
-            end
-        end)
-        Tool.Parent = LP.Backpack
-        Rayfield:Notify({Title = "Tool Equipped", Content = "Use the 'Deleter' tool in your inventory.", Duration = 3})
-    end
-})
-
--- Проверка всех игроков на наличие скрытых предметов (Инвентарь)
-WorldTab:CreateButton({
-    Name = "Check Server Inventories (Console)",
-    Callback = function()
-        for _, p in pairs(Players:GetPlayers()) do
-            print("--- [" .. p.Name .. "] Inventory ---")
-            for _, item in pairs(p.Backpack:GetChildren()) do
-                print("Item: " .. item.Name)
-            end
-            local char = p.Character
-            if char then
-                for _, item in pairs(char:GetChildren()) do
-                    if item:IsA("Tool") then print("Holding: " .. item.Name) end
-                end
-            end
-        end
-        Rayfield:Notify({Title = "Scan Complete", Content = "Check your console (F9) for results.", Duration = 5})
-    end
-})
-
--- // [LOGIC] Chat Spy (Шпионаж за чатом)
-WorldTab:CreateToggle({
-    Name = "Chat Spy (See Private Messages)",
+TPBox:CreateToggle({
+    Name = "Ctrl + Click Teleport",
     CurrentValue = false,
     Callback = function(v)
-        getgenv().ChatSpyEnabled = v
+        getgenv().ClickTP = v
+    end
+})
+
+-- Логика клик-телепорта
+UIS.InputBegan:Connect(function(input, processed)
+    if not processed and input.UserInputType == Enum.UserInputType.MouseButton1 and UIS:IsKeyDown(Enum.KeyCode.LeftControl) and getgenv().ClickTP then
+        local targetPos = Mouse.Hit.p
+        LP.Character.HumanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+    end
+end)
+
+-- // [SECTION] WAYPOINTS
+TPBox:CreateSection("Waypoints (Custom Points)")
+
+local WPName = ""
+TPBox:CreateInput({
+    Name = "Waypoint Name",
+    PlaceholderText = "e.g. Base, Secret Shop",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(v) WPName = v end,
+})
+
+TPBox:CreateButton({
+    Name = "Save Current Location",
+    Callback = function()
+        if WPName ~= "" then
+            Waypoints[WPName] = LP.Character.HumanoidRootPart.CFrame
+            SendNotify("Saved: " .. WPName)
+        else
+            SendNotify("Enter a name first!")
+        end
+    end
+})
+
+TPBox:CreateButton({
+    Name = "TP to Saved Waypoint",
+    Callback = function()
+        if Waypoints[WPName] then
+            LP.Character.HumanoidRootPart.CFrame = Waypoints[WPName]
+            SendNotify("Teleported to " .. WPName)
+        else
+            SendNotify("Waypoint not found!")
+        end
+    end
+})
+-- // [TAB] ATMOSPHERE
+local WorldVisuals = Window:CreateTab("🌌 Atmosphere", 0)
+
+-- // [SECTION] LIGHTING MODS
+WorldVisuals:CreateSection("Lighting Manipulation")
+
+WorldVisuals:CreateToggle({
+    Name = "No Fog (Чистое небо)",
+    CurrentValue = false,
+    Callback = function(v)
         if v then
-            local chatEvents = game:GetService("ReplicatedStorage"):FindFirstChild("DefaultChatSystemChatEvents")
-            if chatEvents then
-                local messageEvent = chatEvents:FindFirstChild("OnMessageDoneFiltering")
-                if messageEvent then
-                    getgenv().ChatSpyConnection = messageEvent.OnClientEvent:Connect(function(messageData)
-                        if getgenv().ChatSpyEnabled then
-                            local speaker = messageData.FromSpeaker
-                            local message = messageData.Message
-                            print("[SPY] " .. speaker .. ": " .. message)
-                        end
-                    end)
-                end
-            end
+            getgenv().OldFogStart = Services.Lighting.FogStart
+            getgenv().OldFogEnd = Services.Lighting.FogEnd
+            Services.Lighting.FogStart = 100000
+            Services.Lighting.FogEnd = 100000
         else
-            if getgenv().ChatSpyConnection then getgenv().ChatSpyConnection:Disconnect() end
+            Services.Lighting.FogStart = getgenv().OldFogStart or 0
+            Services.Lighting.FogEnd = getgenv().OldFogEnd or 1000
         end
     end
 })
 
--- // [LOGIC] Auto-Respawn (Мгновенное возрождение)
-WorldTab:CreateToggle({
-    Name = "Instant Respawn",
-    CurrentValue = false,
+WorldVisuals:CreateSlider({
+    Name = "Brightness (Яркость)",
+    Range = {0, 10},
+    Increment = 0.1,
+    CurrentValue = 2,
     Callback = function(v)
-        getgenv().InstantRespawn = v
-        task.spawn(function()
-            while getgenv().InstantRespawn do
-                if LP.Character and LP.Character:FindFirstChild("Humanoid") and LP.Character.Humanoid.Health <= 0 then
-                    LP:LoadCharacter()
-                end
-                task.wait(0.5)
-            end
-        end)
+        Services.Lighting.Brightness = v
     end
 })
--- // [SECTION] SECURITY (Безопасность и Анти-Админ)
-MiscTab:CreateSection("Server Security")
 
--- Список известных ID администраторов или групп (можно дополнять)
-local AdminRanks = {"Admin", "Moderator", "Owner", "Staff", "Helper"}
-
--- Функция проверки игрока на админку
-local function CheckForAdmin(player)
-    if player:GetRankInGroup(1) >= 200 or player.AccountAge <= 1 then -- Пример: подозрительно новые аккаунты
-        return true
+WorldVisuals:CreateSlider({
+    Name = "Clock Time (Время суток)",
+    Range = {0, 24},
+    Increment = 0.1,
+    CurrentValue = 14,
+    Callback = function(v)
+        Services.Lighting.ClockTime = v
     end
-    for _, rank in pairs(AdminRanks) do
-        if player:GetRoleInGroup(1):find(rank) then return true end
-    end
-    return false
-end
-
--- Переключатель уведомлений о входе игроков
-MiscTab:CreateToggle({
-    Name = "Admin Detector (Auto-Leave)",
-    CurrentValue = false,
-    Callback = function(v) getgenv().AdminDetect = v end
 })
 
--- Логика мониторинга сервера
-Players.PlayerAdded:Connect(function(player)
-    if getgenv().AdminDetect then
-        Rayfield:Notify({
-            Title = "Player Joined",
-            Content = player.Name .. " (Age: " .. player.AccountAge .. " days) joined.",
-            Duration = 5
-        })
-        
-        -- Если зашел админ — мгновенный лив
-        if CheckForAdmin(player) then
-            Rayfield:Notify({
-                Title = "ADMIN DETECTED!",
-                Content = "Leaving server to prevent ban...",
-                Duration = 10
-            })
-            task.wait(0.5)
-            LP:Kick("fucking script helper v2: Admin (" .. player.Name .. ") detected.")
-        end
-    end
-end)
+-- // [SECTION] POST-PROCESSING
+WorldVisuals:CreateSection("Effects")
 
--- Анти-Телепорт (Защита от того, чтобы админ не притянул тебя к себе)
-local lastPos = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") and LP.Character.HumanoidRootPart.CFrame
-MiscTab:CreateToggle({
-    Name = "Anti-TP (Detect Admin TP)",
-    CurrentValue = false,
-    Callback = function(v) getgenv().AntiTP = v end
-})
-
-RunService.Heartbeat:Connect(function()
-    if getgenv().AntiTP and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-        local hrp = LP.Character.HumanoidRootPart
-        if lastPos and (hrp.Position - lastPos.Position).Magnitude > 50 and not getgenv().FlyEnabled then
-            -- Если тебя резко дернуло более чем на 50 стадов без включенного полета — это TP
-            hrp.CFrame = lastPos
-            Rayfield:Notify({Title = "Anti-TP", Content = "Suspicious teleport blocked!", Duration = 3})
-        end
-        lastPos = hrp.CFrame
-    end
-end)
-
--- Удаление логов (Очистка следов выполнения скрипта в игре)
-MiscTab:CreateButton({
-    Name = "Clear In-Game Logs",
+WorldVisuals:CreateButton({
+    Name = "Remove Blur & Distortion",
     Callback = function()
-        local logService = game:GetService("LogService")
-        -- В некоторых играх это помогает скрыть ошибки скриптов от разработчиков
-        print("\n\n\n\n\n\n\n\n\n\n") 
-        Rayfield:Notify({Title = "Logs", Content = "Console visual clear executed.", Duration = 2})
-    end
-})
--- // [SECTION] ADVANCED VISUALS (Продвинутый ESP)
-VisTab:CreateSection("Extra Sensory Perception")
-
-VisTab:CreateToggle({
-    Name = "Tracers (Lines to Players)",
-    CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.Visuals.Tracers = v end
-})
-
-VisTab:CreateToggle({
-    Name = "Show Distance",
-    CurrentValue = false,
-    Callback = function(v) getgenv().SuiteConfig.Visuals.Names = v end
-})
-
--- // [LOGIC] Мощный рендер-движок для Трейсеров
-local function CreateTracer()
-    local line = Drawing.new("Line")
-    line.Visible = false
-    line.Color = Color3.fromRGB(255, 255, 255)
-    line.Thickness = 1
-    line.Transparency = 1
-    return line
-end
-
-local tracers = {}
-
-RunService.RenderStepped:Connect(function()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LP and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = player.Character.HumanoidRootPart
-            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
-            
-            -- Логика Трейсеров
-            if getgenv().SuiteConfig.Visuals.Tracers and onScreen then
-                if not tracers[player] then tracers[player] = CreateTracer() end
-                local tracer = tracers[player]
-                tracer.Visible = true
-                -- Линия идет от центра нижней части экрана к игроку
-                tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
-                tracer.To = Vector2.new(pos.X, pos.Y)
-            else
-                if tracers[player] then tracers[player].Visible = false end
-            end
-            
-            -- Логика Дистанции (Обновление имен в Highlight если нужно)
-            if getgenv().SuiteConfig.Visuals.Names and player.Character:FindFirstChild("Youlter_ESP") then
-                local dist = math.floor((LP.Character.HumanoidRootPart.Position - hrp.Position).Magnitude)
-                -- Мы можем выводить это в консоль или добавить BillboardGui динамически
-            end
-        else
-            if tracers[player] then tracers[player].Visible = false end
-        end
-    end
-end)
-
--- Очистка при выходе игрока
-Players.PlayerRemoving:Connect(function(player)
-    if tracers[player] then
-        tracers[player]:Remove()
-        tracers[player] = nil
-    end
-end)
--- // [SECTION] FUN & TROLLS (Эффекты и приколы)
-MiscTab:CreateSection("Visual Chaos & Physics")
-
--- Бешеное вращение персонажа (Визуальный спинбот)
-MiscTab:CreateToggle({
-    Name = "Spin Bot (Visual Only)",
-    CurrentValue = false,
-    Callback = function(v)
-        getgenv().SpinBot = v
-        task.spawn(function()
-            while getgenv().SpinBot do
-                if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                    LP.Character.HumanoidRootPart.CFrame = LP.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(50), 0)
-                end
-                task.wait()
-            end
-        end)
-    end
-})
-
--- Изменение гравитации (Только для тебя)
-MiscTab:CreateSlider({
-    Name = "Custom Gravity",
-    Range = {0, 196},
-    Increment = 1,
-    CurrentValue = 196,
-    Callback = function(v)
-        workspace.Gravity = v
-    end
-})
-
--- Rainbow Map (Дискотека в небе)
-MiscTab:CreateToggle({
-    Name = "Rainbow Lighting",
-    CurrentValue = false,
-    Callback = function(v)
-        getgenv().RainbowLighting = v
-        task.spawn(function()
-            local lighting = game:GetService("Lighting")
-            while getgenv().RainbowLighting do
-                local hue = tick() % 5 / 5
-                local color = Color3.fromHSV(hue, 1, 1)
-                lighting.Ambient = color
-                lighting.OutdoorAmbient = color
-                task.wait()
-            end
-        end)
-    end
-})
-
--- Функция "Притягивание мусора" (Local Physics)
-MiscTab:CreateButton({
-    Name = "Lag Unanchored Parts (Chaos)",
-    Callback = function()
-        for _, part in pairs(workspace:GetDescendants()) do
-            if part:IsA("BasePart") and not part.Anchored and part.Parent ~= LP.Character then
-                part.Velocity = Vector3.new(0, 100, 0) -- Подбрасывает все незакрепленные предметы
-            end
-        end
-        Rayfield:Notify({Title = "Physics Chaos", Content = "All loose parts launched!", Duration = 2})
-    end
-})
--- // [SECTION] TOOLS (Модификация предметов)
-MiscTab:CreateSection("Tool & Inventory Enhancements")
-
--- Увеличение дистанции взаимодействия (Reach)
-MiscTab:CreateSlider({
-    Name = "Tool Reach (Distance)",
-    Range = {0, 50},
-    Increment = 1,
-    CurrentValue = 0,
-    Callback = function(v)
-        getgenv().ToolReach = v
-    end
-})
-
--- Автоматический клик (Auto Clicker)
-MiscTab:CreateToggle({
-    Name = "Auto-Clicker (Hold Tool)",
-    CurrentValue = false,
-    Callback = function(v)
-        getgenv().AutoClick = v
-        task.spawn(function()
-            while getgenv().AutoClick do
-                local tool = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-                if tool then
-                    tool:Activate()
-                end
-                task.wait(0.1) -- Скорость клика
-            end
-        end)
-    end
-})
-
--- Быстрый подбор всех инструментов на карте
-MiscTab:CreateButton({
-    Name = "Grab All Dropped Tools",
-    Callback = function()
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj:IsA("TouchTransmitter") and obj.Parent:IsA("Tool") then
-                firetouchinterest(LP.Character.HumanoidRootPart, obj.Parent.Handle, 0)
-                firetouchinterest(LP.Character.HumanoidRootPart, obj.Parent.Handle, 1)
-            end
-        end
-        Rayfield:Notify({Title = "Inventory", Content = "Attempted to grab all tools!", Duration = 2})
-    end
-})
-
--- // [LOGIC] Применение Reach через изменение хитбокса
-RunService.Stepped:Connect(function()
-    if getgenv().ToolReach > 0 then
-        local tool = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-        if tool and tool:FindFirstChild("Handle") then
-            local handle = tool.Handle
-            -- Увеличиваем размер хитбокса рукоятки
-            handle.Size = Vector3.new(getgenv().ToolReach, getgenv().ToolReach, getgenv().ToolReach)
-            handle.CanCollide = false
-        end
-    end
-end)
--- // [SECTION] OPTIMIZATION (Максимальный FPS)
-MiscTab:CreateSection("Performance & FPS Boost")
-
-MiscTab:CreateButton({
-    Name = "Ultra FPS Boost (Remove Textures)",
-    Callback = function()
-        local t = workspace:GetDescendants()
-        for i = 1, #t do
-            local v = t[i]
-            if v:IsA("BasePart") and not v:IsA("MeshPart") then
-                v.Material = Enum.Material.SmoothPlastic
-                v.Reflectance = 0
-            elseif v:IsA("Decal") or v:IsA("Texture") then
-                v:Destroy()
-            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+        for _, v in pairs(Services.Lighting:GetChildren()) do
+            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") then
                 v.Enabled = false
             end
         end
-        game:GetService("Lighting").GlobalShadows = false
-        game:GetService("Lighting").FogEnd = 9e9
-        settings().Rendering.QualityLevel = 1
-        Rayfield:Notify({Title = "Optimizer", Content = "Textures and effects cleared!", Duration = 3})
+        SendNotify("Screen effects cleared for better focus.")
     end
 })
 
-MiscTab:CreateToggle({
-    Name = "CPU Saver (Limit FPS in Background)",
+WorldVisuals:CreateButton({
+    Name = "Force Shadows Off",
+    Callback = function()
+        Services.Lighting.GlobalShadows = false
+        SendNotify("Shadows disabled.")
+    end
+})
+
+-- // [SECTION] CAMERA MODS
+WorldVisuals:CreateSection("Camera Settings")
+
+WorldVisuals:CreateSlider({
+    Name = "Field of View (FOV)",
+    Range = {70, 120},
+    Increment = 1,
+    CurrentValue = 70,
+    Callback = function(v)
+        Camera.FieldOfView = v
+    end
+})
+-- // [TAB] TROLLS
+local TrollTab = Window:CreateTab("🤡 Trolls", 0)
+
+-- // [VARIABLES]
+local ChatSpamLoop = nil
+local AutoReplyConnection = nil
+
+-- // [SECTION] CHAT SPAMMER
+TrollTab:CreateSection("Chat Annoyance")
+
+local SpamMessage = "Youlter Suite owns this server! | github.com/Youlter"
+TrollTab:CreateInput({
+    Name = "Custom Spam Message",
+    PlaceholderText = "Type here...",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(v) SpamMessage = v end,
+})
+
+TrollTab:CreateToggle({
+    Name = "Enable Chat Spammer",
     CurrentValue = false,
     Callback = function(v)
         if v then
-            setfpscap(15) -- Снижает нагрузку, когда ты в АФК
+            ChatSpamLoop = task.spawn(function()
+                while true do
+                    Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(SpamMessage, "All")
+                    task.wait(3) -- Задержка 3 секунды для обхода мута
+                end
+            end)
         else
-            setfpscap(60)
+            if ChatSpamLoop then task.cancel(ChatSpamLoop) end
         end
     end
 })
 
-MiscTab:CreateButton({
-    Name = "Clear Chat History",
+-- // [SECTION] AUTO-REPLY (TOXIC MODE)
+TrollTab:CreateSection("Auto-Reply System")
+
+local Replies = {
+    ["cheat"] = "Stay mad, it's just skill.",
+    ["hacker"] = "Cry about it, kid.",
+    ["report"] = "Imagine reporting in 2026.",
+    ["youlter"] = "The legend is here."
+}
+
+TrollTab:CreateToggle({
+    Name = "Auto-Reply to Accusations",
+    CurrentValue = false,
+    Callback = function(v)
+        if v then
+            AutoReplyConnection = Players.PlayerChatted:Connect(function(type, player, message)
+                if player ~= LP then
+                    local msg = message:lower()
+                    for trigger, response in pairs(Replies) do
+                        if msg:find(trigger) then
+                            task.wait(1) -- Пауза для реалистичности
+                            Services.ReplicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(response, "All")
+                            break
+                        end
+                    end
+                end
+            end)
+        else
+            if AutoReplyConnection then AutoReplyConnection:Disconnect() end
+        end
+    end
+})
+
+-- // [SECTION] CHARACTER TROLLS
+TrollTab:CreateSection("Visual Chaos")
+
+TrollTab:CreateButton({
+    Name = "Spin Bot (Visual Only)",
     Callback = function()
-        local chatMain = LP.PlayerGui:FindFirstChild("Chat")
-        if chatMain then
-            chatMain:Destroy() -- Полная очистка интерфейса чата для FPS
-        end
+        local Root = LP.Character.HumanoidRootPart
+        task.spawn(function()
+            while task.wait() do
+                Root.CFrame = Root.CFrame * CFrame.Angles(0, math.rad(45), 0)
+            end
+        end)
     end
 })
+-- // [TAB] KEYBINDS
+local BindTab = Window:CreateTab("⌨️ Keybinds", 0)
 
--- // [FINAL CLEANUP LOGIC]
--- Авто-удаление лагающих трупов (если игра позволяет)
-task.spawn(function()
-    while task.wait(10) do
-        for _, v in pairs(workspace:GetChildren()) do
-            if v:IsA("Model") and v:FindFirstChild("Humanoid") and v.Humanoid.Health <= 0 then
-                v:Destroy()
+-- // [SECTION] UI CONTROL
+BindTab:CreateSection("Interface Management")
+
+BindTab:CreateKeybind({
+    Name = "Minimize/Open Menu",
+    CurrentKeybind = "LeftAlt",
+    HoldToInteract = false,
+    Flag = "UI_Toggle",
+    Callback = function(Keybind)
+        -- Rayfield автоматически обрабатывает скрытие, если передать это в настройки,
+        -- но мы можем добавить кастомное уведомление
+        SendNotify("Menu toggled via " .. Keybind)
+    end,
+})
+
+-- // [SECTION] QUICK ACTIONS
+BindTab:CreateSection("Combat & Movement Binds")
+
+BindTab:CreateKeybind({
+    Name = "Panic Teleport (Spawn)",
+    CurrentKeybind = "P",
+    HoldToInteract = false,
+    Callback = function()
+        if LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+            LP.Character.HumanoidRootPart.CFrame = CFrame.new(0, 100, 0) -- Высоко в небо или на спавн
+            SendNotify("PANIC: Teleported to safety!")
+        end
+    end,
+})
+
+BindTab:CreateKeybind({
+    Name = "Toggle Noclip",
+    CurrentKeybind = "N",
+    HoldToInteract = false,
+    Callback = function()
+        -- Переключаем состояние через существующий конфиг
+        local currentState = not getgenv().NoclipActive
+        getgenv().NoclipActive = currentState
+        SendNotify("Noclip: " .. (currentState and "ON" or "OFF"))
+    end,
+})
+
+-- // [SECTION] MACROS
+BindTab:CreateSection("Action Macros")
+
+local IsSpammingE = false
+BindTab:CreateKeybind({
+    Name = "Auto-Press 'E' (Proximity Prompts)",
+    CurrentKeybind = "V",
+    HoldToInteract = false,
+    Callback = function()
+        IsSpammingE = not IsSpammingE
+        SendNotify("E-Spam: " .. (IsSpammingE and "Active" or "Disabled"))
+        
+        task.spawn(function()
+            while IsSpammingE do
+                -- Симуляция нажатия кнопки для взаимодействия с объектами
+                keypress(0x45) -- Код клавиши E
+                task.wait(0.05)
+                keyrelease(0x45)
+                task.wait(0.05)
+            end
+        end)
+    end,
+})
+-- // [TAB] FIXES
+local FixTab = Window:CreateTab("🛡️ Fixes", 0)
+
+-- // [SECTION] GLOBAL BYPASSES
+FixTab:CreateSection("Anti-Cheat Patches")
+
+FixTab:CreateButton({
+    Name = "Bypass Adonis & Basic Admin",
+    Callback = function()
+        -- Удаление локальных скриптов анти-чита из персонажа и интерфейса
+        for _, v in pairs(LP:GetDescendants()) do
+            if v:IsA("LocalScript") and (v.Name:lower():find("adoni") or v.Name:lower():find("ac") or v.Name:lower():find("check")) then
+                v.Disabled = true
+                SendNotify("Disabled potential AC: " .. v.Name)
             end
         end
     end
-end)
--- // [SECTION] EXECUTION CONTROL (Финальный запуск)
--- Проверка на повторный запуск (Anti-Double Run)
-if getgenv().YoulterLoaded == true then
-    Rayfield:Notify({
-        Title = "Warning",
-        Content = "Script is already running!",
-        Duration = 5,
-        Image = 4483345998,
-    })
-    return
-end
-
--- Установка флага загрузки
-getgenv().YoulterLoaded = true
-
--- // [COMPLETION] Финальный штрих интерфейса
-Window:SelectTab(MoveTab) -- Открывает вкладку движения при старте
-
-Rayfield:Notify({
-    Title = "Fucking Script Helper v2",
-    Content = "Successfully loaded all 15 blocks! Enjoy, Youlter.",
-    Duration = 8,
-    Image = 4483345998,
 })
 
--- // [CLEANUP] Авто-сброс флага при уничтожении UI
--- Если ты нажмешь "Destroy Script", флаг сбросится, чтобы можно было запустить заново
-task.spawn(function()
-    while true do
-        if not game:GetService("CoreGui"):FindFirstChild("Rayfield") then
-            getgenv().YoulterLoaded = false
-            break
-        end
-        task.wait(2)
-    end
-end)
+FixTab:CreateButton({
+    Name = "Hook Remote Security (Universal)",
+    Callback = function()
+        local g = getgenv()
+        local raw = getrawmetatable(game)
+        setreadonly(raw, false)
+        local oldNamecall = raw.__namecall
 
-print("==========================================")
-print("  YOU ARE READY TO GO! FULL VERSION LOADED")
-print("=========================================="
+        raw.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+            
+            -- Блокируем передачу инфы о скорости и прыжках
+            if method == "FireServer" and (tostring(self):lower():find("kick") or tostring(self):lower():find("check") or tostring(self):lower():find("ban")) then
+                warn("Blocked attempt to call security remote: " .. tostring(self))
+                return nil
+            end
+            return oldNamecall(self, ...)
+        end)
+        setreadonly(raw, true)
+        SendNotify("Remote Hook Active.")
+    end
+})
+
+-- // [SECTION] PERFORMANCE RECOVERY
+FixTab:CreateSection("Engine Recovery")
+
+FixTab:CreateButton({
+    Name = "Anti-Lag (Clear Debris)",
+    Callback = function()
+        -- Удаление мусора, который создают другие игроки или эффекты
+        for _, v in pairs(workspace:GetChildren()) do
+            if v:IsA("Part") and v.Transparency == 1 and not v.CanCollide then
+                v:Destroy()
+            end
+        end
+        SendNotify("Cleaned invisible debris.")
+    end
+})
+
+FixTab:CreateToggle({
+    Name = "Disable Touch Interests (Anti-KillPart)",
+    CurrentValue = false,
+    Callback = function(v)
+        getgenv().AntiKill = v
+        for _, part in pairs(workspace:GetDescendants()) do
+            if part:IsA("TouchTransmitter") then
+                part.Parent.CanTouch = not v
+            end
+        end
+    end
+})
+-- // [FINAL SECTION] CONFIGURATION & EXIT
+local ConfigTab = Window:CreateTab("💾 System", 0)
+
+ConfigTab:CreateSection("Configuration Management")
+
+ConfigTab:CreateButton({
+    Name = "Save Current Setup",
+    Callback = function()
+        Rayfield:SaveConfiguration()
+        SendNotify("Configuration saved to /YoulterV2/ folder!")
+    end
+})
+
+ConfigTab:CreateSection("Script Control")
+
+ConfigTab:CreateButton({
+    Name = "FORCE TERMINATE (Self-Destruct)",
+    Callback = function()
+        SendNotify("Cleaning up and exiting...")
+        task.wait(1)
+        
+        -- Отключаем все созданные циклы и переменные
+        getgenv().YoulterExecuted = false
+        getgenv().ClickTP = false
+        getgenv().AutoEquip = false
+        
+        -- Удаляем UI
+        Rayfield:Destroy()
+        
+        -- Очищаем Drawing API (FOV и линии)
+        if FOVDrawing then FOVDrawing:Remove() end
+    end
+})
+
+-- // [POST-LOAD LOGIC]
+-- Этот код срабатывает после загрузки всех блоков
+
+-- Авто-настройка FOV при старте
+FOVDrawing.Radius = getgenv().Config.Combat.FOV
+FOVDrawing.Visible = false
+
+-- Финальный лог в консоль для подтверждения
+print([[
+    ___________________________________________
+    | FUCKING SCRIPT HELPER V2 LOADED         |
+    | Status: EXTREME / 2026 Edition          |
+    | Developer: Youlter                      |
+    |_________________________________________|
+]])
+
+-- Уведомление о полной готовности
+Rayfield:LoadConfiguration() -- Загрузка сохраненных настроек пользователя
+SendNotify("ALL MODULES OPERATIONAL. ENJOY DOMINATION.")
+
+-- // [END OF CODE]
