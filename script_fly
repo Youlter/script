@@ -1452,12 +1452,7 @@ local LogTab = Window:CreateTab("Logs & Alerts")
 -- // [SECTION] Event Notifications
 LogTab:CreateSection("Server Events")
 
-LogTab:CreateToggle({
-    Name = "Player Join/Leave Notify",
-    CurrentValue = true,
-    Callback = function(v) getgenv().SuiteConfig.Logs.PlayerJoin = v end
-})
-
+-- Оставляем только важные настройки без автоматических уведомлений о заходе
 LogTab:CreateToggle({
     Name = "Sound Alerts (Beep)",
     CurrentValue = false,
@@ -1473,48 +1468,7 @@ LogTab:CreateToggle({
     Callback = function(v) getgenv().SuiteConfig.Logs.ChatKeywords = v end
 })
 
-LogTab:CreateButton({
-    Name = "View Full Chat Log (F9)",
-    Callback = function()
-        print("--- [ FULL CHAT LOG ] ---")
-        -- Логика уже работает в фоновом режиме (см. Часть 4)
-    end
-})
-
--- // [LOGIC] Sound Alert System (IY Style)
-local function PlayAlertSound()
-    if getgenv().SuiteConfig.Logs.SoundAlerts then
-        local sound = Instance.new("Sound")
-        sound.SoundId = "rbxassetid://203785572" -- Классический звук уведомления IY
-        sound.Parent = game:GetService("SoundService")
-        sound:Play()
-        sound.Ended:Connect(function() sound:Destroy() end)
-    end
-end
-
--- // [LOGIC] Player Watcher
-Players.PlayerAdded:Connect(function(p)
-    if getgenv().SuiteConfig.Logs.PlayerJoin then
-        Rayfield:Notify({
-            Title = "Player Joined",
-            Content = p.Name .. " (Age: " .. p.AccountAge .. " days)",
-            Duration = 5
-        })
-        PlayAlertSound()
-    end
-end)
-
-Players.PlayerRemoving:Connect(function(p)
-    if getgenv().SuiteConfig.Logs.PlayerJoin then
-        Rayfield:Notify({
-            Title = "Player Left",
-            Content = p.Name .. " has left the server.",
-            Duration = 3
-        })
-    end
-end)
-
--- // [LOGIC] Chat Keyword Monitor
+-- // [LOGIC] Chat Keyword Monitor (Оставляем только это)
 local function CheckMessage(player, msg)
     if getgenv().SuiteConfig.Logs.ChatKeywords then
         local lowerMsg = msg:lower()
@@ -1525,14 +1479,19 @@ local function CheckMessage(player, msg)
                     Content = player.Name .. ": " .. msg,
                     Duration = 10
                 })
-                PlayAlertSound()
+                if getgenv().SuiteConfig.Logs.SoundAlerts then
+                    local sound = Instance.new("Sound")
+                    sound.SoundId = "rbxassetid://203785572"
+                    sound.Parent = game:GetService("SoundService")
+                    sound:Play()
+                    sound.Ended:Connect(function() sound:Destroy() end)
+                end
                 break
             end
         end
     end
 end
 
--- Подключение к текущим и новым игрокам
 for _, p in pairs(Players:GetPlayers()) do
     p.Chatted:Connect(function(m) CheckMessage(p, m) end)
 end
@@ -1541,7 +1500,7 @@ Players.PlayerAdded:Connect(function(p)
     p.Chatted:Connect(function(m) CheckMessage(p, m) end)
 end)
 
--- // [LOGIC] Anti-Kick Protection (Light)
+-- // [LOGIC] Anti-Kick Protection
 local oldKick
 oldKick = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
@@ -1551,7 +1510,7 @@ oldKick = hookmetamethod(game, "__namecall", function(self, ...)
             Content = "The server tried to kick you. Message: " .. tostring(...),
             Duration = 20
         })
-        return nil -- Блокируем попытку кика (работает только против слабых античитов)
+        return nil
     end
     return oldKick(self, ...)
 end)
