@@ -1279,7 +1279,7 @@ GameTab:CreateSection("Murder Mystery 2")
 
 -- Переключатель для твоего внешнего скрипта
 GameTab:CreateToggle({
-    Name = "Advanced Highlight ESP (External)",
+    Name = "Advanced Highlight ESP (BETA)",
     CurrentValue = false,
     Callback = function(v)
         getgenv().SuiteConfig.MM2.ExternalESP = v
